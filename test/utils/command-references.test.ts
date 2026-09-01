@@ -275,7 +275,8 @@ describe('getTransformerForTool', () => {
     for (const toolId of ['bob', 'cursor', 'github-copilot', 'oh-my-pi', 'opencode', 'pi', 'qwen'] as const) {
       for (const delivery of ['both', 'commands'] as const) {
         const transformer = getTransformerForTool(toolId, delivery, 'adapter-backed', FLAT_SLASH);
-        expect(transformer?.('/opsx:apply'), `${toolId} ${delivery}`).toBe('/opsx-apply');
+        expect(transformer?.('/opsx:apply'), `${toolId} ${delivery} legacy`).toBe('/opsx-apply');
+        expect(transformer?.('/opsx-apply'), `${toolId} ${delivery} canonical`).toBe('/opsx-apply');
       }
       // ...but must not fall back to hyphen commands when no commands are generated
       expect(getTransformerForTool(toolId, 'skills', 'adapter-backed', FLAT_SLASH)).toBe(transformToSkillReferences);
@@ -313,9 +314,12 @@ describe('getTransformerForTool', () => {
     );
   });
 
-  it('selects no transformer for namespaced tools when commands are generated', () => {
-    expect(getTransformerForTool('claude', 'both', 'adapter-backed', NAMESPACED_SLASH)).toBeUndefined();
-    expect(getTransformerForTool('claude', 'commands', 'adapter-backed', NAMESPACED_SLASH)).toBeUndefined();
+  it('selects a namespaced normalizer for namespaced tools when commands are generated', () => {
+    for (const delivery of ['both', 'commands'] as const) {
+      const transformer = getTransformerForTool('claude', delivery, 'adapter-backed', NAMESPACED_SLASH);
+      expect(transformer?.('/opsx-apply')).toBe('/opsx:apply');
+      expect(transformer?.('/opsx:apply')).toBe('/opsx:apply');
+    }
   });
 
   it('selects shared-tree-safe Codex skill references in every delivery mode', () => {
@@ -334,17 +338,17 @@ describe('getTransformerForTool', () => {
 });
 
 // Regression for #1153/#1514: the apply skill template must author its
-// continue/apply/archive references as canonical /opsx:* tokens so the
+// continue/apply/archive references as canonical /opsx-* tokens so the
 // generator can rewrite them per target. Bare "openspec-continue-change"
 // prose is invisible to the transformers, which left skills.sh, Codex, and
 // Kimi with dead text and no archive/input invocation after a naive revert.
 describe('apply skill template generates valid per-target invocations', () => {
   const skill = getApplyChangeSkillTemplate().instructions;
 
-  it('authors invocation references as transformable /opsx:* tokens', () => {
-    expect(skill).toContain('/opsx:apply add-auth');
-    expect(skill).toContain('suggest using `/opsx:continue`');
-    expect(skill).toContain('archive this change with `/opsx:archive`');
+  it('authors invocation references as transformable /opsx-* tokens', () => {
+    expect(skill).toContain('/opsx-apply add-auth');
+    expect(skill).toContain('suggest using `/opsx-continue`');
+    expect(skill).toContain('archive this change with `/opsx-archive`');
     // No bare, non-transformable skill-name prose remains.
     expect(skill).not.toContain('suggest using openspec-continue-change');
   });
@@ -362,7 +366,7 @@ describe('apply skill template generates valid per-target invocations', () => {
       expect(out).toContain(arch);
       expect(out).toContain(`${apply} add-auth`);
       // No canonical token survives the rewrite.
-      expect(out).not.toMatch(/\/opsx:(continue|apply|archive)/);
+      expect(out).not.toMatch(/\/opsx[:-](continue|apply|archive)/);
     });
   }
 });
