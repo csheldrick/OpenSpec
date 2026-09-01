@@ -125,8 +125,8 @@ describe('command-generation/invocation', () => {
     });
 
     it('rewrites only what differs from the canonical authored form', () => {
-      expect(needsInvocationRewrite({ style: 'namespaced', prefix: '/' })).toBe(false);
-      expect(needsInvocationRewrite({ style: 'flat', prefix: '/' })).toBe(true);
+      expect(needsInvocationRewrite({ style: 'namespaced', prefix: '/' })).toBe(true);
+      expect(needsInvocationRewrite({ style: 'flat', prefix: '/' })).toBe(false);
       expect(needsInvocationRewrite({ style: 'namespaced', prefix: '@' })).toBe(true);
     });
   });
@@ -153,7 +153,7 @@ describe('command-generation/invocation', () => {
       expect(fileContent).not.toContain('/opsx:');
     });
 
-    it('leaves command references alone for namespaced tools', () => {
+    it('normalizes command references for namespaced tools', () => {
       for (const toolId of NAMESPACED_TOOLS) {
         const adapter = CommandAdapterRegistry.get(toolId)!;
         const { fileContent } = generateCommand(sampleContent, adapter);
