@@ -37,7 +37,8 @@ The agent SHALL verify that all required work has been completed.
 - **AND** delta specs exist in `openspec/changes/<name>/specs/`
 - **THEN** the agent extracts all requirements from delta specs
 - **AND** searches codebase for implementation of each requirement
-- **AND** reports which requirements appear to have implementation vs which are missing
+- **AND** traces beyond keyword matches into the actual execution path where practical
+- **AND** reports which requirements have implementation evidence vs which are missing
 
 #### Scenario: All tasks complete
 - **WHEN** all tasks are marked complete
@@ -59,13 +60,15 @@ The agent SHALL verify that implementation matches the specifications.
 - **THEN** for each requirement in delta specs:
   - Search codebase for implementation
   - Identify relevant files and line numbers
+  - Trace how the implementation is reached where practical
   - Assess whether implementation satisfies the requirement
 
 #### Scenario: Scenario coverage check
 - **WHEN** verifying correctness
 - **THEN** for each scenario in delta specs:
   - Check if the scenario's conditions are handled in code
-  - Check if tests exist that cover the scenario
+  - Check if tests exist that exercise the scenario
+  - Inspect whether those tests assert the specified outcome
   - Report coverage status
 
 #### Scenario: Implementation matches spec
@@ -74,7 +77,7 @@ The agent SHALL verify that implementation matches the specifications.
 - **AND** mark requirement as covered
 
 #### Scenario: Implementation diverges from spec
-- **WHEN** implementation exists but doesn't match spec intent
+- **WHEN** implementation exists but concrete evidence shows it doesn't match spec intent
 - **THEN** report the divergence as WARNING
 - **AND** explain what differs
 - **AND** suggest: either update implementation or update spec to match reality
@@ -84,6 +87,49 @@ The agent SHALL verify that implementation matches the specifications.
 - **THEN** report as CRITICAL issue
 - **AND** suggest: "Implement requirement X" with guidance on what's needed
 
+### Requirement: Adversarial Verification
+The agent SHALL actively try to falsify important implementation claims after the initial implementation mapping rather than only searching for confirming evidence.
+
+#### Scenario: Challenge each important contract
+- **WHEN** the agent has mapped requirements and scenarios to implementation evidence
+- **THEN** it turns each important artifact statement into a testable claim
+- **AND** checks plausible counterexamples including boundary values, negative or error paths, alternate states, and cross-component interactions
+- **AND** traces at least one relevant end-to-end execution path when the repository makes that practical
+
+#### Scenario: Presence is not proof
+- **WHEN** a matching symbol, keyword, test file, or passing test suite is found
+- **THEN** the agent treats it as supporting evidence rather than proof by itself
+- **AND** verifies that the implementation is reachable on the required path
+- **AND** verifies that relevant tests assert the behavior required by the artifact
+
+#### Scenario: Focused executable validation
+- **WHEN** a focused test or command can practically challenge an important claim
+- **THEN** the agent runs the smallest relevant validation
+- **AND** records what claim the validation attempted to falsify and the observed outcome
+
+#### Scenario: Concrete contradiction found
+- **WHEN** source, tests, or executable behavior concretely contradict an artifact claim
+- **THEN** the agent reports the defect with the artifact claim, contradicting evidence, and failure mechanism
+- **AND** assigns CRITICAL or WARNING severity based on impact
+
+#### Scenario: Evidence is insufficient
+- **WHEN** the agent cannot establish a claim from the available source, tests, or executable evidence
+- **AND** no concrete contradiction has been demonstrated
+- **THEN** it reports a verification gap rather than claiming the implementation is wrong
+- **AND** identifies what evidence or validation would resolve the gap
+
+#### Scenario: Validation cannot be executed
+- **WHEN** required tooling or environment is unavailable
+- **THEN** the agent continues static verification where possible
+- **AND** marks affected runtime claims UNVERIFIED
+- **AND** does not invent a defect from the inability to run the check
+
+#### Scenario: Targeted falsification finds no contradiction
+- **WHEN** implementation evidence matches the artifact
+- **AND** a reasonable targeted falsification attempt finds no counterexample
+- **THEN** the agent marks the claim SUPPORTED
+- **AND** does not describe the result as mathematically proven
+
 ### Requirement: Coherence Verification
 The agent SHALL verify that implementation is sensible and follows design decisions.
 
@@ -92,7 +138,7 @@ The agent SHALL verify that implementation is sensible and follows design decisi
 - **AND** design.md exists for the change
 - **THEN** extract key decisions from design.md
 - **AND** verify implementation follows those decisions
-- **AND** report any deviations
+- **AND** report any demonstrated deviations
 
 #### Scenario: No design.md
 - **WHEN** verifying coherence
@@ -136,9 +182,15 @@ The agent SHALL produce a structured, prioritized report.
 #### Scenario: Issue prioritization
 - **WHEN** issues are found
 - **THEN** group and display in priority order:
-  1. CRITICAL - Must fix before archive (missing implementation, incomplete tasks)
-  2. WARNING - Should fix (divergence from spec/design, missing tests)
-  3. SUGGESTION - Nice to fix (pattern inconsistencies, minor improvements)
+  1. CRITICAL - Must fix before archive (missing implementation, incomplete tasks, demonstrated contract violations)
+  2. WARNING - Should fix (demonstrated divergence, missing scenario coverage, material evidence gaps)
+  3. SUGGESTION - Nice to fix (pattern inconsistencies, low-risk evidence gaps, minor improvements)
+
+#### Scenario: Adversarial evidence summary
+- **WHEN** verification completes
+- **THEN** summarize the falsification attempts performed and their outcomes
+- **AND** identify any UNVERIFIED claims and why they could not be checked
+- **AND** when no defects are found, state which negative or boundary paths were inspected
 
 #### Scenario: Actionable recommendations
 - **WHEN** reporting an issue
@@ -187,4 +239,5 @@ The agent SHALL gracefully handle changes with varying artifact completeness.
 #### Scenario: Full change (all artifacts)
 - **WHEN** change has proposal, design, specs, and tasks
 - **THEN** perform all verification checks
+- **AND** run the adversarial pass across requirements, scenarios, and design decisions
 - **AND** cross-reference artifacts for consistency

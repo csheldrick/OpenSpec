@@ -47,12 +47,18 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    This returns the change directory and `contextFiles` (artifact ID -> array of concrete file paths). Read all available artifacts from `contextFiles`.
 
-4. **Initialize verification report structure**
+4. **Build the verification map**
 
    Create a report structure with three dimensions:
    - **Completeness**: Track tasks and spec coverage
    - **Correctness**: Track requirement implementation and scenario coverage
    - **Coherence**: Track design adherence and pattern consistency
+
+   Build a verification map before judging anything:
+   - Extract every requirement and scenario from the specs
+   - Extract completed and incomplete tasks
+   - Extract key design decisions when design artifacts exist
+   - For each item, identify implementation and test evidence that could prove or disprove it
 
    Each dimension can have CRITICAL, WARNING, or SUGGESTION issues.
 
@@ -70,9 +76,9 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    - If delta specs exist in `contextFiles.specs`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
-       - Search codebase for keywords related to the requirement
-       - Assess if implementation likely exists
-     - If requirements appear unimplemented:
+       - Search the codebase for implementation evidence
+       - Trace beyond keyword matches into the actual execution path
+     - If a requirement has no implementation evidence:
        - Add CRITICAL issue: "Requirement not found: <requirement name>"
        - Recommendation: "Implement requirement X: <description>"
 
@@ -80,28 +86,55 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
    **Requirement Implementation Mapping**:
    - For each requirement from delta specs:
-     - Search codebase for implementation evidence
-     - If found, note file paths and line ranges
-     - Assess if implementation matches requirement intent
-     - If divergence detected:
-       - Add WARNING: "Implementation may diverge from spec: <details>"
+     - Locate implementation evidence and note file paths and line ranges
+     - Trace how callers reach the implementation instead of treating symbol presence as proof
+     - Assess whether behavior matches the requirement intent
+     - If a concrete divergence is demonstrated:
+       - Add WARNING: "Implementation diverges from spec: <details>"
        - Recommendation: "Review <file>:<lines> against requirement X"
 
    **Scenario Coverage**:
    - For each scenario in delta specs (marked with "#### Scenario:"):
-     - Check if conditions are handled in code
-     - Check if tests exist covering the scenario
-     - If scenario appears uncovered:
+     - Check whether the scenario's preconditions and outcomes are handled in code
+     - Check whether tests exercise the scenario, including the assertions that prove the specified outcome
+     - Treat test existence or a passing suite as supporting evidence, not proof by itself
+     - If the scenario is not covered:
        - Add WARNING: "Scenario not covered: <scenario name>"
        - Recommendation: "Add test or implementation for scenario: <description>"
 
-7. **Verify Coherence**
+7. **Run an adversarial pass**
+
+   After the initial mapping, actively try to **falsify** the claim that the implementation is complete and correct. Do not merely look for confirming evidence.
+
+   For every important requirement and scenario:
+   - Turn the artifact statement into a testable claim
+   - Look for a concrete counterexample in boundary values, negative/error paths, alternate states, and cross-component interactions
+   - Trace at least one relevant end-to-end code path from entry point to outcome when the repository makes that possible
+   - Check for implementation that exists but is unreachable, bypassed, stale, or guarded differently than the artifact requires
+   - Check whether tests assert the required behavior or merely execute the path
+   - When executable validation is practical, run the smallest focused test or command that could disprove the claim
+
+   **Evidence rules**:
+   - A passing test does not prove a requirement unless its assertions exercise the requirement's behavior
+   - Keyword/symbol presence does not prove a requirement is wired into the executing path
+   - Treat current source and executable behavior as implementation truth; use artifacts as the contract being checked
+   - Do not turn uncertainty into a defect. If evidence is missing or execution is unavailable, record a verification gap instead of claiming the implementation is wrong
+   - Every reported defect MUST include: the artifact claim, the contradicting implementation/test evidence, and the concrete failure mechanism
+   - If no counterexample is found after a reasonable targeted attempt, mark the claim as supported, not mathematically proven
+
+   **Classify adversarial outcomes**:
+   - **FAILED**: concrete evidence contradicts the artifact -> CRITICAL or WARNING based on impact
+   - **WEAK EVIDENCE**: behavior may be correct, but the available implementation/test evidence does not establish it -> WARNING or SUGGESTION depending on risk
+   - **SUPPORTED**: implementation evidence matches the artifact and the targeted falsification attempt found no contradiction
+   - **UNVERIFIED**: validation could not be performed because required tooling/environment was unavailable -> note explicitly, without inventing a defect
+
+8. **Verify Coherence**
 
    **Design Adherence**:
    - If `contextFiles.design` exists:
      - Extract key decisions (look for sections like "Decision:", "Approach:", "Architecture:")
      - Verify implementation follows those decisions
-     - If contradiction detected:
+     - If contradiction is demonstrated:
        - Add WARNING: "Design decision not followed: <decision>"
        - Recommendation: "Update implementation or revise design.md to match reality"
    - If no design.md: Skip design adherence check, note "No design.md to verify against"
@@ -113,18 +146,18 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
      - Add SUGGESTION: "Code pattern deviation: <details>"
      - Recommendation: "Consider following project pattern: <example>"
 
-8. **Generate Verification Report**
+9. **Generate Verification Report**
 
    **Summary Scorecard**:
    ```markdown
    ## Verification Report: <change-name>
 
    ### Summary
-   | Dimension    | Status           |
-   |--------------|------------------|
-   | Completeness | X/Y tasks, N reqs|
-   | Correctness  | M/N reqs covered |
-   | Coherence    | Followed/Issues  |
+   | Dimension    | Status                     |
+   |--------------|----------------------------|
+   | Completeness | X/Y tasks, N reqs           |
+   | Correctness  | M/N claims supported        |
+   | Coherence    | Followed/Issues              |
    ```
 
    **Issues by Priority**:
@@ -132,17 +165,25 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
    1. **CRITICAL** (Must fix before archive):
       - Incomplete tasks
       - Missing requirement implementations
+      - Demonstrated behavior that contradicts a required contract
       - Each with specific, actionable recommendation
 
    2. **WARNING** (Should fix):
-      - Spec/design divergences
+      - Demonstrated spec/design divergences
       - Missing scenario coverage
+      - Material verification gaps where required behavior is not established
       - Each with specific recommendation
 
    3. **SUGGESTION** (Nice to fix):
       - Pattern inconsistencies
+      - Low-risk evidence gaps
       - Minor improvements
       - Each with specific recommendation
+
+   **Adversarial evidence**:
+   - Summarize the falsification attempts performed and their outcomes
+   - Call out any UNVERIFIED claims and why they could not be checked
+   - If no issues were found, state which negative/boundary paths were inspected rather than only saying "looks good"
 
    **Final Assessment**:
    - If CRITICAL issues: "X critical issue(s) found. Fix before archiving."
@@ -151,17 +192,22 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 
 **Verification Heuristics**
 
+- **Artifacts are the contract**: Specs, scenarios, tasks, and explicit design decisions define what must be true
+- **Falsification over confirmation**: After locating evidence, actively search for a case that would make the claim false
+- **Execution path over presence**: A symbol, branch, or test file only counts when it is actually connected to the required behavior
+- **Tests are evidence**: Inspect assertions and coverage; do not equate "tests pass" with "requirement verified"
+- **Calibrated certainty**: Separate demonstrated defects from weak evidence and from checks you could not perform
 - **Completeness**: Focus on objective checklist items (checkboxes, requirements list)
-- **Correctness**: Use keyword search, file path analysis, reasonable inference - don't require perfect certainty
-- **Coherence**: Look for glaring inconsistencies, don't nitpick style
-- **False Positives**: When uncertain, prefer SUGGESTION over WARNING, WARNING over CRITICAL
+- **Coherence**: Look for significant inconsistencies, don't nitpick style
+- **False Positives**: Do not report speculative defects. When uncertain, report the evidence gap and what would resolve it
 - **Actionability**: Every issue must have a specific recommendation with file/line references where applicable
 
 **Graceful Degradation**
 
 - If only tasks.md exists: verify task completion only, skip spec/design checks
 - If tasks + specs exist: verify completeness and correctness, skip design
-- If full artifacts: verify all three dimensions
+- If full artifacts: verify all three dimensions and run the adversarial pass across requirements, scenarios, and decisions
+- If tests cannot run: continue static verification, explicitly mark runtime claims UNVERIFIED
 - Always note which checks were skipped and why
 
 **Output Format**
@@ -169,6 +215,7 @@ Verify that an implementation matches the change artifacts (specs, tasks, design
 Use clear markdown with:
 - Table for summary scorecard
 - Grouped lists for issues (CRITICAL/WARNING/SUGGESTION)
+- A short adversarial-evidence section describing what was challenged
 - Code references in format: `file.ts:123`
 - Specific, actionable recommendations
 - No vague suggestions like "consider reviewing"
