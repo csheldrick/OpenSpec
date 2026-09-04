@@ -1,0 +1,63 @@
+name: Refresh PR 1752
+
+on:
+  push:
+    branches:
+      - agent/1741-adversarial-verify-refresh
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20.19.0'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply requested redesign
+        run: python .github/scripts/refresh-1752.py
+
+      - name: Build
+        run: pnpm build
+
+      - name: Regenerate parity hashes
+        run: pnpm regen:parity-hashes
+
+      - name: Regenerate static skills
+        run: pnpm generate:skills
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Focused verification
+        run: >-
+          pnpm exec vitest run
+          test/core/templates/verify-change-adversarial.test.ts
+          test/core/templates/skill-templates-parity.test.ts
+          test/core/templates/skillssh-parity.test.ts
+
+      - name: Commit validated tree
+        run: |
+          rm .github/scripts/refresh-1752.py .github/workflows/refresh-1752.yml
+          git config user.name "Relay"
+          git config user.email "csheldrick+relay@gmail.com"
+          git add -A
+          git diff --cached --stat
+          git commit -m "feat(verify): add opt-in adversarial mode"
+          git push origin HEAD:agent/1741-adversarial-verify-refresh
