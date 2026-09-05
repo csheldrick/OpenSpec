@@ -1,0 +1,73 @@
+name: Refresh PR 1755
+
+on:
+  push:
+    branches:
+      - relay/refresh-1755
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout helper branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '20.19.0'
+          cache: pnpm
+
+      - name: Rebuild change on current upstream main
+        run: |
+          cp .github/scripts/refresh-1755.py /tmp/refresh-1755.py
+          git remote add upstream https://github.com/Fission-AI/OpenSpec.git || true
+          git fetch upstream main
+          git reset --hard upstream/main
+          python /tmp/refresh-1755.py
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Regenerate parity hashes
+        run: pnpm regen:parity-hashes
+
+      - name: Regenerate static skills
+        run: pnpm generate:skills
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Focused tests
+        run: >-
+          pnpm exec vitest run
+          test/utils/flat-canonical-invocations.test.ts
+          test/utils/command-references.test.ts
+          test/core/command-generation/invocation.test.ts
+          test/core/templates/skill-templates-parity.test.ts
+          test/core/templates/skillssh-parity.test.ts
+          test/core/templates/propose.test.ts
+
+      - name: Ensure review regression is preserved
+        run: |
+          grep -F 'run \`/opsx-apply\` or ask me to apply this change' src/core/templates/workflows/propose.ts
+
+      - name: Publish refreshed PR head
+        run: |
+          git config user.name "Relay"
+          git config user.email "csheldrick+relay@gmail.com"
+          git add -A
+          git diff --cached --stat
+          git commit -m "fix: use flat canonical workflow invocations"
+          git push --force origin HEAD:personal/flat-canonical-invocations
