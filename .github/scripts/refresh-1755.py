@@ -45,8 +45,8 @@ new = """  if (invocation !== undefined) {\n    return (text: string) => transfo
 text = replace_exact(text, old, new, 1)
 p.write_text(text)
 
-# Raw workflow templates use the flat canonical form. Preserve all newer upstream
-# behavior around those references, including the propose natural-language fallback.
+# Raw workflow templates use the flat canonical form while preserving all newer
+# upstream behavior around those references.
 for wf in Path('src/core/templates/workflows').glob('*.ts'):
     text = wf.read_text()
     if '/opsx:' in text:
@@ -61,13 +61,25 @@ text = text.replace("it('leaves command references alone for namespaced tools'",
 text = text.replace("expect(adapter.formatFile(sampleContent), toolId).toContain('/opsx:archive');", "expect(adapter.formatFile(sampleContent), toolId).toContain('/opsx-archive');")
 p.write_text(text)
 
-# Existing command-reference tests keep legacy-colon coverage; update canonical
-# target behavior and ensure namespaced targets still normalize both forms.
+# Existing command-reference tests retain legacy-colon compatibility coverage but
+# authored-template assertions now expect flat canonical tokens.
 p = Path('test/utils/command-references.test.ts')
 text = p.read_text()
 text = text.replace("it('is a no-op for the canonical namespaced slash form'", "it('normalizes canonical flat input for a namespaced slash target'")
 text = text.replace("const input = 'Use /opsx:new then /opsx:apply';\n      expect(transformCommandInvocations(input, NAMESPACED_SLASH)).toBe(input);", "const input = 'Use /opsx-new then /opsx-apply';\n      expect(transformCommandInvocations(input, NAMESPACED_SLASH)).toBe('Use /opsx:new then /opsx:apply');")
 text = text.replace("it('selects no transformer for namespaced tools when commands are generated', () => {\n    expect(getTransformerForTool('claude', 'both', 'adapter-backed', NAMESPACED_SLASH)).toBeUndefined();\n    expect(getTransformerForTool('claude', 'commands', 'adapter-backed', NAMESPACED_SLASH)).toBeUndefined();\n  });", "it('selects a normalizer for namespaced tools when commands are generated', () => {\n    for (const delivery of ['both', 'commands'] as const) {\n      const transformer = getTransformerForTool('claude', delivery, 'adapter-backed', NAMESPACED_SLASH);\n      expect(transformer?.('/opsx-apply')).toBe('/opsx:apply');\n      expect(transformer?.('/opsx:apply')).toBe('/opsx:apply');\n    }\n  });")
+text = text.replace("it('authors invocation references as transformable /opsx:* tokens'", "it('authors invocation references as transformable /opsx-* tokens'")
+text = text.replace("'/opsx:apply add-auth'", "'/opsx-apply add-auth'")
+text = text.replace("'suggest using `/opsx:continue`'", "'suggest using `/opsx-continue`'")
+text = text.replace("'archive this change with `/opsx:archive`'", "'archive this change with `/opsx-archive`'")
+p.write_text(text)
+
+# Current upstream intentionally keeps command-only propose handoff command-only,
+# while the skill allows a natural-language apply request. Change syntax only.
+p = Path('test/core/templates/propose.test.ts')
+text = p.read_text()
+text = text.replace("'When you are ready, run `/opsx:apply`.'", "'When you are ready, run `/opsx-apply`.'")
+text = text.replace("'run `/opsx:apply` or ask me to apply this change'", "'run `/opsx-apply` or ask me to apply this change'")
 p.write_text(text)
 
 # Template parity assertions refer to authored canonical command syntax.
