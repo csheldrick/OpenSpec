@@ -19,7 +19,6 @@ text = replace_exact(
     1,
 )
 text = text.replace('canonical `/opsx:<id>`', 'canonical `/opsx-<id>`')
-text = text.replace('canonical `/opsx:<id>` that', 'canonical `/opsx-<id>` that')
 p.write_text(text)
 
 # Command generation always normalizes references so legacy colon-form content
@@ -37,7 +36,7 @@ p.write_text(text)
 p = Path('src/utils/command-references.ts')
 text = p.read_text()
 text = text.replace("import {\n  formatCommandInvocation,\n  needsInvocationRewrite,\n} from '../core/command-generation/invocation.js';", "import { formatCommandInvocation } from '../core/command-generation/invocation.js';")
-text = text.replace(r'/\\/opsx:([a-z-]+)/g', r'/\\/opsx[:-]([a-z-]+)/g')
+text = text.replace(r'/\/opsx:([a-z-]+)/g', r'/\/opsx[:-]([a-z-]+)/g')
 text = text.replace('canonical `/opsx:<command>`', 'canonical `/opsx-<command>`')
 text = text.replace('canonical `/opsx:<id>`', 'canonical `/opsx-<id>`')
 text = text.replace('canonical `/opsx:*`', 'canonical `/opsx-*`')
@@ -62,8 +61,8 @@ text = text.replace("it('leaves command references alone for namespaced tools'",
 text = text.replace("expect(adapter.formatFile(sampleContent), toolId).toContain('/opsx:archive');", "expect(adapter.formatFile(sampleContent), toolId).toContain('/opsx-archive');")
 p.write_text(text)
 
-# Existing command-reference tests keep legacy-colon coverage; update the canonical
-# no-op/transformer expectations and add coverage for hyphen canonical input.
+# Existing command-reference tests keep legacy-colon coverage; update canonical
+# target behavior and ensure namespaced targets still normalize both forms.
 p = Path('test/utils/command-references.test.ts')
 text = p.read_text()
 text = text.replace("it('is a no-op for the canonical namespaced slash form'", "it('normalizes canonical flat input for a namespaced slash target'")
@@ -76,7 +75,7 @@ p = Path('test/core/templates/skill-templates-parity.test.ts')
 text = p.read_text().replace('/opsx:', '/opsx-')
 p.write_text(text)
 
-# Pin the core compatibility contract explicitly.
+# Pin the compatibility contract explicitly.
 p = Path('test/utils/flat-canonical-invocations.test.ts')
 p.write_text("""import { describe, expect, it } from 'vitest';\n\nimport { CANONICAL_INVOCATION } from '../../src/core/command-generation/invocation.js';\nimport { getOpsxApplyCommandTemplate } from '../../src/core/templates/skill-templates.js';\nimport {\n  getSkillReferenceTransformer,\n  transformCommandInvocations,\n} from '../../src/utils/command-references.js';\n\ndescribe('flat canonical workflow invocations', () => {\n  it('uses flat slash syntax as the raw canonical form', () => {\n    expect(CANONICAL_INVOCATION).toEqual({ style: 'flat', prefix: '/' });\n    const body = getOpsxApplyCommandTemplate().content;\n    expect(body).toContain('/opsx-');\n    expect(body).not.toContain('/opsx:');\n  });\n\n  it('maps both legacy and canonical command references to skills', () => {\n    const transform = getSkillReferenceTransformer('vibe');\n    expect(transform('/opsx:apply')).toBe('/openspec-apply-change');\n    expect(transform('/opsx-apply')).toBe('/openspec-apply-change');\n  });\n\n  it('maps flat canonical input to namespaced tools', () => {\n    expect(\n      transformCommandInvocations('/opsx-apply', { style: 'namespaced', prefix: '/' })\n    ).toBe('/opsx:apply');\n  });\n\n  it('normalizes legacy colon input for flat tools', () => {\n    expect(transformCommandInvocations('/opsx:apply', { style: 'flat', prefix: '/' })).toBe(\n      '/opsx-apply'\n    );\n  });\n});\n""")
 
